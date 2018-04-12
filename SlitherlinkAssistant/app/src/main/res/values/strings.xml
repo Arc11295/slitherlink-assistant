@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">Slitherlink Assistant</string>
+
+    <string name="title_activity_fullscreen">Fullscreen Activity</string>
+    <string name="dummy_button">Dummy Button</string>
+    <string name="dummy_content">DUMMY\nCONTENT</string>
+    <string name="main_button">Go Fullscreen</string>
+    <string name="picture_button_description">Picture</string>
+    <string name="request_permission">This app requires camera permission to function.</string>
+    <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+
+    <string name="title_activity_process_image">Process Image Activity</string>
+    <string name="capture_display_description">Displays captured image</string>
 </resources>
