@@ -1,0 +1,5 @@
+<resources>
+    <declare-styleable name="CropBoxView">
+        <attr name="boxAlpha" format="integer" />
+    </declare-styleable>
+</resources>

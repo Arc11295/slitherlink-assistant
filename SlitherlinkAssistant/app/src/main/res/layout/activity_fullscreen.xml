@@ -21,6 +21,15 @@
          android:fitsSystemWindows. -->
 
 
+    <com.github.arc11295.slitherlinkassistant.CropBoxView
+        android:id="@+id/crop_box"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="@+id/camera_preview"
+        app:layout_constraintEnd_toEndOf="@+id/camera_preview"
+        app:layout_constraintStart_toStartOf="@+id/camera_preview"
+        app:layout_constraintTop_toTopOf="@+id/camera_preview" />
+
     <LinearLayout
         android:id="@+id/fullscreen_content_controls"
         style="?metaButtonBarStyle"

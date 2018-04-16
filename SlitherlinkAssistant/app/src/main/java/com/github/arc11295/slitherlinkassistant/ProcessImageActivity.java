@@ -1,9 +1,11 @@
 package com.github.arc11295.slitherlinkassistant;
 
 import android.annotation.SuppressLint;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
+import android.graphics.Rect;
 import android.os.AsyncTask;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
@@ -121,8 +123,18 @@ public class ProcessImageActivity extends AppCompatActivity {
             }
         });
 
+
         mImage = BitmapFactory.decodeByteArray(sImageData, 0, sImageData.length);
         sImageData = null; //We don't need the raw data anymore once we've decoded it
+        Intent intent = getIntent();
+        Rect cropArea = intent.getParcelableExtra(FullscreenActivity.EXTRA_CROP_BOX);
+        int boxHeight = intent.getIntExtra(FullscreenActivity.EXTRA_BOX_HEIGHT, 0);
+        double scaleFactor = ((double) mImage.getHeight())/boxHeight;
+        cropArea.left *= scaleFactor;
+        cropArea.right *= scaleFactor;
+        cropArea.top *= scaleFactor;
+        cropArea.bottom *= scaleFactor;
+        mImage = Bitmap.createBitmap(mImage, cropArea.left, cropArea.top, cropArea.width(), cropArea.height());
         showBitmap(mImage);
     }
 

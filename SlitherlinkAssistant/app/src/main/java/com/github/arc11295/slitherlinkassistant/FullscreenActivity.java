@@ -14,6 +14,7 @@ import android.content.res.Configuration;
 import android.graphics.ImageFormat;
 import android.graphics.Matrix;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -62,6 +63,8 @@ import java.util.concurrent.TimeUnit;
  * status bar and navigation/system bar) with user interaction.
  */
 public class FullscreenActivity extends AppCompatActivity implements ActivityCompat.OnRequestPermissionsResultCallback{
+    public static final String EXTRA_CROP_BOX = "com.github.arc11295.slitherlinkassistant.CROP_BOX";
+    public static final String EXTRA_BOX_HEIGHT = "com.github.arc11295.slitherlinkassistant.BOX_HEIGHT";
     /**
      * Whether or not the system UI should be auto-hidden after
      * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -311,8 +314,14 @@ public class FullscreenActivity extends AppCompatActivity implements ActivityCom
             ProcessImageActivity.sImageData = new byte[buffer.remaining()];
             buffer.get(ProcessImageActivity.sImageData);
             image.close();
+
+            CropBoxView box = findViewById(R.id.crop_box);
+            int boxHeight = box.getHeight();
+            Rect cropArea = box.getCropArea();
+
             Intent intent = new Intent(mActivity, ProcessImageActivity.class);
-            //intent.putExtra(EXTRA_IMAGE_DATA, bytes);
+            intent.putExtra(EXTRA_CROP_BOX, cropArea);
+            intent.putExtra(EXTRA_BOX_HEIGHT, boxHeight);
             startActivity(intent);
         }
 

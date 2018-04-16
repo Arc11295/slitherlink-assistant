@@ -35,7 +35,7 @@
             android:name=".ProcessImageActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:label="@string/title_activity_process_image"
-            android:parentActivityName="com.github.arc11295.slitherlinkassistant.FullscreenActivity"
+            android:parentActivityName=".FullscreenActivity"
             android:theme="@style/FullscreenTheme">
             <meta-data
                 android:name="android.support.PARENT_ACTIVITY"
