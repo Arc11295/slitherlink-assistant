@@ -129,6 +129,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         Intent intent = getIntent();
         Rect cropArea = intent.getParcelableExtra(FullscreenActivity.EXTRA_CROP_BOX);
         int boxHeight = intent.getIntExtra(FullscreenActivity.EXTRA_BOX_HEIGHT, 0);
+        // cropArea is still in the coordinates of the screen, not the image, so we have to scale it
         double scaleFactor = ((double) mImage.getHeight())/boxHeight;
         cropArea.left *= scaleFactor;
         cropArea.right *= scaleFactor;
@@ -228,6 +229,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         @Override
         protected void onPreExecute() {
             mProgressBar.setVisibility(View.VISIBLE);
+            //TODO: add some kind of overlay on top of the image so the progress bar is easier to see
         }
 
         @Override
