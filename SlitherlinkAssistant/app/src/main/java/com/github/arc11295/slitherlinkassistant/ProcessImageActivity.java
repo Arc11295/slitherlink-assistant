@@ -19,6 +19,9 @@ import android.support.v4.app.NavUtils;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 
+import org.opencv.android.Utils;
+import org.opencv.core.Mat;
+
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
  * status bar and navigation/system bar) with user interaction.
@@ -27,6 +30,7 @@ public class ProcessImageActivity extends AppCompatActivity {
     private static final String TAG = "ProcessImageActivity";
     protected static byte[] sImageData; //Array for passing raw JPEG data between FullScreenActivity and ProcessImageActivity
     private Bitmap mImage;
+    private Mat mMat;
     private ImageView mCaptureDisplay;
     private ProgressBar mProgressBar;
     /**
@@ -129,6 +133,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         Intent intent = getIntent();
         Rect cropArea = intent.getParcelableExtra(FullscreenActivity.EXTRA_CROP_BOX);
         int boxHeight = intent.getIntExtra(FullscreenActivity.EXTRA_BOX_HEIGHT, 0);
+        int puzzleSize = intent.getIntExtra(FullscreenActivity.EXTRA_PUZZLE_SIZE, 7);
         // cropArea is still in the coordinates of the screen, not the image, so we have to scale it
         double scaleFactor = ((double) mImage.getHeight())/boxHeight;
         cropArea.left *= scaleFactor;
@@ -136,7 +141,9 @@ public class ProcessImageActivity extends AppCompatActivity {
         cropArea.top *= scaleFactor;
         cropArea.bottom *= scaleFactor;
         mImage = Bitmap.createBitmap(mImage, cropArea.left, cropArea.top, cropArea.width(), cropArea.height());
+        mMat = new Mat();
         showBitmap(mImage);
+        new ProcessImageTask().execute(puzzleSize);
     }
 
     @Override
@@ -224,7 +231,7 @@ public class ProcessImageActivity extends AppCompatActivity {
     }
 
     //TODO write the image processing code in this class
-    private class ProcessImageTask extends AsyncTask<Bitmap, Void, Bitmap> {
+    private class ProcessImageTask extends AsyncTask<Integer, Void, Void> {
 
         @Override
         protected void onPreExecute() {
@@ -233,14 +240,19 @@ public class ProcessImageActivity extends AppCompatActivity {
         }
 
         @Override
-        protected Bitmap doInBackground(Bitmap... bitmaps) {
+        protected Void doInBackground(Integer... ints) {
+            Utils.bitmapToMat(mImage, mMat);
+            processImage(mMat.getNativeObjAddr(), ints[0]);
+            Utils.matToBitmap(mMat, mImage);
             return null;
         }
 
         @Override
-        protected void onPostExecute(Bitmap result) {
+        protected void onPostExecute(Void v) {
             mProgressBar.setVisibility(View.INVISIBLE);
-            showBitmap(result);
+            showBitmap(mImage);
         }
     }
+
+    public native void processImage(long matAddr, int puzzleSize);
 }

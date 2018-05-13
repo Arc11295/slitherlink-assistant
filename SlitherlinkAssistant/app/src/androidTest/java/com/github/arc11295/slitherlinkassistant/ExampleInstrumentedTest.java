@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getTargetContext();
 
-        assertEquals("com.example.cameratest", appContext.getPackageName());
+        assertEquals("com.github.arc11295.slitherlinkassistant", appContext.getPackageName());
     }
 }

@@ -46,6 +46,7 @@ import android.view.TextureView;
 import android.view.View;
 import android.view.MenuItem;
 import android.support.v4.app.NavUtils;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import java.nio.ByteBuffer;
@@ -57,7 +58,6 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-//TODO add a crop square to the UI and crop the still capture to match before passing to ProcessImageActivity
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
  * status bar and navigation/system bar) with user interaction.
@@ -65,6 +65,7 @@ import java.util.concurrent.TimeUnit;
 public class FullscreenActivity extends AppCompatActivity implements ActivityCompat.OnRequestPermissionsResultCallback{
     public static final String EXTRA_CROP_BOX = "com.github.arc11295.slitherlinkassistant.CROP_BOX";
     public static final String EXTRA_BOX_HEIGHT = "com.github.arc11295.slitherlinkassistant.BOX_HEIGHT";
+    public static final String EXTRA_PUZZLE_SIZE = "com.github.arc11295.slitherlinkassistant.PUZZLE_SIZE";
     /**
      * Whether or not the system UI should be auto-hidden after
      * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -320,8 +321,11 @@ public class FullscreenActivity extends AppCompatActivity implements ActivityCom
             Rect cropArea = box.getCropArea();
 
             Intent intent = new Intent(mActivity, ProcessImageActivity.class);
+            EditText editText = findViewById(R.id.puzzleSize);
+            int puzzleSize = Integer.parseInt(editText.getText().toString());
             intent.putExtra(EXTRA_CROP_BOX, cropArea);
             intent.putExtra(EXTRA_BOX_HEIGHT, boxHeight);
+            intent.putExtra(EXTRA_PUZZLE_SIZE, puzzleSize);
             startActivity(intent);
         }
 

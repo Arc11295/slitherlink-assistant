@@ -9,6 +9,8 @@
     <string name="picture_button_description">Picture</string>
     <string name="request_permission">This app requires camera permission to function.</string>
     <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+    <string name="dim_selection_label">Puzzle size:</string>
+    <string name="puzzle_default_dim">7</string>
 
     <string name="title_activity_process_image">Process Image Activity</string>
     <string name="capture_display_description">Displays captured image</string>
