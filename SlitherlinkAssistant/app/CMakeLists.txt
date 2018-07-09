@@ -5,14 +5,13 @@
 
 cmake_minimum_required(VERSION 3.4.1)
 
-set(OpenCV_SHARED ON)
-set(OpenCV_DIR /home/aaron/OpenCV-android-sdk/sdk/native/jni)
-find_package (OpenCV REQUIRED)
+find_package (OpenCV 3.4 REQUIRED java)
 
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
 # You can define multiple libraries, and CMake builds them for you.
 # Gradle automatically packages shared libraries with your APK.
+
 
 add_library( # Sets the name of the library.
              native-lib
@@ -22,6 +21,9 @@ add_library( # Sets the name of the library.
 
              # Provides a relative path to your source file(s).
              src/main/cpp/native-lib.cpp )
+
+
+add_library( slinker-lib SHARED src/main/cpp/SlinkerGrid.cpp )
 
 # Searches for a specified prebuilt library and stores the path as a
 # variable. Because CMake includes system libraries in the search path by
@@ -36,6 +38,13 @@ find_library( # Sets the name of the path variable.
               # you want CMake to locate.
               log )
 
+set(tess_two_home /home/aaron/Repositories/Tess-Two/tess-two)
+add_library(tess-lib SHARED IMPORTED)
+set_property(TARGET tess-lib PROPERTY IMPORTED_LOCATION ${tess_two_home}/libs/${ANDROID_ABI}/libtess.so)
+include_directories(/usr/include/tesseract)
+add_library(lept-lib SHARED IMPORTED)
+set_property(TARGET lept-lib PROPERTY IMPORTED_LOCATION ${tess_two_home}/libs/${ANDROID_ABI}/liblept.so)
+
 
 # Specifies libraries CMake should link to your target library. You
 # can link multiple libraries, such as libraries you define in this
@@ -44,8 +53,14 @@ find_library( # Sets the name of the path variable.
 target_link_libraries( # Specifies the target library.
                        native-lib
 
-                       ${OpenCV_LIBS}
+                       ${OpenCV_LIBRARIES}
 
                        # Links the target library to the log library
                        # included in the NDK.
-                       ${log-lib} )
+                       ${log-lib}
+
+                       tess-lib
+                       lept-lib
+
+                       slinker-lib
+                       )

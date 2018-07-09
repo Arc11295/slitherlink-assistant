@@ -6,36 +6,69 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 
-import org.opencv.android.BaseLoaderCallback;
-import org.opencv.android.LoaderCallbackInterface;
-import org.opencv.android.OpenCVLoader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
-    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
-        @Override
-        public void onManagerConnected(int status) {
-            switch (status) {
-                case LoaderCallbackInterface.SUCCESS:
-                {
-                    Log.i(TAG, "OpenCV loaded successfully");
-
-                    // Load native library after(!) OpenCV initialization
-                    System.loadLibrary("native-lib");
-                } break;
-                default:
-                {
-                    super.onManagerConnected(status);
-                } break;
-            }
-        }
-    };
+    static {
+        System.loadLibrary("opencv_java3");
+        System.loadLibrary("native-lib");
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        clearAppFiles();
+        try {
+            copyTesseractData();
+        } catch (IOException e) {
+            Log.e(TAG, "onCreate: something went wrong while copying tesseract data", e);
+        }
         setContentView(R.layout.activity_main);
+    }
+
+    private void copyTesseractData() throws IOException {
+        Log.d(TAG, "copyTesseractData() called");
+        File filesdir = getFilesDir();
+        ProcessImageActivity.sTessParent = filesdir.getPath();
+        if (!ProcessImageActivity.sTessParent.endsWith("/")) {
+            ProcessImageActivity.sTessParent += "/";
+        }
+        File tessdata = new File(filesdir, "/tessdata/");
+        if (tessdata.mkdir()) {
+            Log.d(TAG, "copyTesseractData: copying files");
+            InputStream rawEng = getResources().openRawResource(R.raw.eng);
+            File engFile = new File(tessdata, "/eng.traineddata");
+            myWriteFile(engFile, rawEng);
+            rawEng.close();
+        }
+    }
+
+    private void clearAppFiles() {
+        File filesdir = getFilesDir();
+        File tessdata = new File(filesdir, "/tessdata/");
+        if (tessdata.exists()) {
+            File engFile = new File(tessdata, "/eng.traineddata");
+            if (engFile.exists()) {
+                engFile.delete();
+            }
+            tessdata.delete();
+        }
+    }
+
+    private void myWriteFile(File dest, InputStream src) throws IOException{
+        if (dest.createNewFile()) {
+            FileOutputStream oStream = new FileOutputStream(dest);
+            byte[] buffer = new byte[4096];
+            while (src.read(buffer) != -1) {
+                oStream.write(buffer);
+            }
+            oStream.close();
+        }
     }
 
     public void openFullscreen(View view) {
@@ -43,18 +76,4 @@ public class MainActivity extends AppCompatActivity {
         startActivity(intent);
         Log.d(TAG, "openFullscreen: successfully called startActivity and returned");
     }
-
-    @Override
-    public void onResume()
-    {
-        super.onResume();
-        if (!OpenCVLoader.initDebug()) {
-            Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
-            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_4_0, this, mLoaderCallback);
-        } else {
-            Log.d(TAG, "OpenCV library found inside package. Using it!");
-            mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
-        }
-    }
-
 }

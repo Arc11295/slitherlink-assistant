@@ -2,23 +2,39 @@
 // Created by aaron on 4/17/18.
 //
 #include "native-lib.hpp"
+#include "solving_rules_4.h"
 #include <jni.h>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/features2d.hpp>
+#include <baseapi.h>
 #include <vector>
+#include <string>
+#include <sstream>
 #include <set>
 #include <cmath>
+#include <cctype>
+#include <cstdlib>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <android/log.h>
 #define LOG_TAG "native-lib"
 #define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG,LOG_TAG,__VA_ARGS__)
+#define ALOGE(...) __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
+#define DEBUG 1
 
 using namespace cv;
 
+std::string* globalPuzzle = NULL;
+
+// TODO change the return type of this function so we can return error codes
 extern "C" JNIEXPORT void
 JNICALL
-Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_processImage(
-        JNIEnv *env, jobject instance, jlong addr, jint puzzleSize) {
+Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
+        JNIEnv *env, jobject instance, jlong addr, jint puzzleSize, jstring jTessParent) {
+    if (globalPuzzle != NULL) {
+        cleanUpGlobals();
+    }
     Mat& myMat = *(Mat*) addr;
     Mat imgGray;
     cvtColor(myMat, imgGray, COLOR_RGB2GRAY);
@@ -26,18 +42,27 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_processImage(
     std::vector<KeyPoint> keypoints{};
 
     detectKeypoints(imgGray, keypoints);
-    /*for (auto k : keypoints) {
+#if DEBUG
+    for (auto k : keypoints) {
         auto point = k.pt;
-        circle(myMat, point, 15, Scalar(255, 0, 0), CV_FILLED);
-    }*/
+        circle(myMat, point, 15, Scalar(0, 0, 0), CV_FILLED);
+    }
+#endif
 
     std::vector<Point2f> grid{};
     double avgUnit = findStrongGridPoints(keypoints, grid);
 
-    /*ALOGD("there are %d points in the grid", (int) grid.size());
+#if DEBUG
+    ALOGD("there are %d points in the grid", (int) grid.size());
     for (auto i = grid.begin(); i != grid.end(); ++i) {
         circle(myMat, *i, 10, Scalar(0, 0, 255), CV_FILLED);
-    }*/
+    }
+#endif
+
+    // TODO return an error code
+    if (grid.size() == 0) {
+        return;
+    }
 
     double theta = calculateRotation(grid);
 
@@ -45,18 +70,28 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_processImage(
 
     findWeakGridPoints(keypoints, grid, gridSet, theta, avgUnit);
 
-    /*for (auto p : gridSet) {
+#if DEBUG
+    for (auto p : gridSet) {
         circle(myMat, p, 5, Scalar(0, 255, 0), CV_FILLED);
-    }*/
+    }
+#endif
 
     grid = std::vector<Point2f>(gridSet.begin(), gridSet.end());
-    Mat1f gridXs(puzzleSize+1, puzzleSize+1, 0.0);
-    Mat1f gridYs(puzzleSize+1, puzzleSize+1, 0.0);
+    Mat1i gridXs(puzzleSize+1, puzzleSize+1, 0);
+    Mat1i gridYs(puzzleSize+1, puzzleSize+1, 0);
     Mat binary;
     //TODO make sure we're consistently getting the actual edges of the puzzle
+    // usually this does work but at least once it gave something like 700 and 200 for an image that
+    // was pretty well aligned with the crop box, if perhaps off-center. probably worth investigating
     auto pair = getPuzzleTopLeft(imgGray, binary, 0.2, avgUnit);
     completeGrid(grid, gridXs, gridYs, pair, puzzleSize, avgUnit, theta);
 
+
+    const char* tessParent = env->GetStringUTFChars(jTessParent, 0);
+
+    globalPuzzle = new std::string{findNumbers(imgGray, myMat, gridXs, gridYs, tessParent, puzzleSize)};
+
+#if DEBUG
     for (int i = 0; i < gridXs.rows; ++i) {
         for (int j = 0; j < gridXs.cols; ++j) {
             Point2f point{};
@@ -65,6 +100,50 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_processImage(
             circle(myMat, point, 10, Scalar(255,0,0), CV_FILLED);
         }
     }
+
+    ALOGD("Got the puzzle layout\n%s",globalPuzzle->c_str());
+#endif
+
+    env->ReleaseStringUTFChars(jTessParent, tessParent);
+    //TODO: return a code for successful execution
+}
+
+extern "C" JNIEXPORT void
+JNICALL
+Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_checkSolution(
+        JNIEnv *env, jobject instance, jlong matAddr, jint puzzleSize) {
+    // TODO: get correct solution from slinker, then compare to user solution
+    std::string loopy = convertToLoopy(*globalPuzzle, puzzleSize);
+#if DEBUG
+    ALOGD("loopy format string is %s", loopy.c_str());
+#endif
+
+    SlinkerGrid sPuzzle = SlinkerGrid::ReadFromLoopyFormat(loopy);
+#if DEBUG
+    ALOGD("gave the puzzle to slinker:\n%s", sPuzzle.GetPrintOut().c_str());
+#endif
+    sPuzzle.ClearBorders();
+    auto rules = GetSolvingRules4();
+    SlinkerGrid solution = sPuzzle.FindSolutions(rules, true, 1)[0];
+
+#if DEBUG
+    solution.MarkOffBordersAsUnknown();
+    ALOGD("The solution is:\n%s", solution.GetPrintOut().c_str());
+    solution.MarkUnknownBordersAsOff();
+#endif
+    cleanUpGlobals();
+}
+
+extern "C" JNIEXPORT void
+JNICALL
+Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_cleanUpGlobals(
+        JNIEnv *env, jobject instance) {
+    cleanUpGlobals();
+}
+
+void cleanUpGlobals() {
+    delete globalPuzzle;
+    globalPuzzle = NULL;
 }
 
 void detectKeypoints(const Mat& img, std::vector<KeyPoint>& kps) {
@@ -85,10 +164,11 @@ double findStrongGridPoints(const std::vector<KeyPoint>& kps, std::vector<Point2
 
     for (KeyPoint kp : kps) {
         Point2f candidate = kp.pt;
-        ALOGD("candidate is at (%f, %f)", candidate.x, candidate.y);
         std::vector<Point2f> neighbors;
         std::vector<double> bestDists;
         findNeighbors(kps, candidate, neighbors, bestDists);
+#if DEBUG
+        ALOGD("candidate is at (%f, %f)", candidate.x, candidate.y);
         if (neighbors.size() < 4) {
             ALOGD("DANGER DANGER WILL ROBINSON");
         }
@@ -96,6 +176,7 @@ double findStrongGridPoints(const std::vector<KeyPoint>& kps, std::vector<Point2
         for (Point2f n : neighbors) {
             ALOGD("(%f, %f)", n.x, n.y);
         }
+#endif
         //Use information about four neighbors to see if candidate is a grid point or not
         Scalar mean{};
         Scalar std{};
@@ -103,8 +184,10 @@ double findStrongGridPoints(const std::vector<KeyPoint>& kps, std::vector<Point2
         // the distances from candidate to its neighbors should have low coefficient of variation
         // if it's a real grid point
         //TODO make sure this threshold continues to work
-        if (std[0]/mean[0] > 0.07) {
+        if (std[0]/mean[0] > 0.08) {
+#if DEBUG
             ALOGD("distances to neighbors have too high variation");
+#endif
             continue;
         }
 
@@ -122,10 +205,14 @@ double findStrongGridPoints(const std::vector<KeyPoint>& kps, std::vector<Point2
         meanStdDev(verify, mean, std);
         //TODO make sure this threshold continues to work
         if (std[0]/mean[0] > 0.01) {
+#if DEBUG
             ALOGD("neighbors are rotated different amounts");
+#endif
             continue;
         }
+#if DEBUG
         ALOGD("found an actual grid point");
+#endif
 
         grid.push_back(candidate);
         for (Point2f n : neighbors) {
@@ -138,7 +225,6 @@ double findStrongGridPoints(const std::vector<KeyPoint>& kps, std::vector<Point2
         }
     }
 
-    ALOGD("about to return");
     return distTotal/numDists;
 }
 
@@ -175,8 +261,6 @@ double myDist(Point2f left, Point2f right) {
 
 double calculateRotation(const std::vector<Point2f>& grid) {
     assert(grid.size() % 5 == 0);
-    //TODO change this assert into checking the grid size beforehand and informing the user of an error
-    assert(grid.size() > 0);
 
     std::vector<Point2f> fitPoints{};
     for (auto i = grid.begin(); i != grid.end(); std::advance(i,5)) {
@@ -208,12 +292,12 @@ double calculateRotation(const std::vector<Point2f>& grid) {
     return -atan2(line[1], line[0]);
 }
 
+// TODO change this function to return the PointSet by value, which will be efficient through move semantics
 void findWeakGridPoints(const std::vector<KeyPoint>& kps, const std::vector<Point2f>& strongGrid,
                         PointSet& gridSet, double angle, double unit) {
     for (Point2f pt : strongGrid) {
         gridSet.insert(pt);
     }
-    ALOGD("successfully inserted strong grid points");
     for (KeyPoint kp : kps) {
         Point2f candidate = kp.pt;
         if (gridSet.find(candidate) != gridSet.end()) {
@@ -225,10 +309,9 @@ void findWeakGridPoints(const std::vector<KeyPoint>& kps, const std::vector<Poin
             rotatePoint(cand2, angle);
             cand2 /= unit;
             Point2f err = Point2i(cand2);
-            assert(err != cand2);
             err -= cand2;
             // TODO make sure these thresholds continue to work
-            if (abs(err.x) < 0.05 and abs(err.y) < 0.05) {
+            if (abs(err.x) < 0.1 and abs(err.y) < 0.1) {
                 gridSet.insert(candidate);
                 break;
             }
@@ -275,7 +358,7 @@ std::pair<int, int> getPuzzleTopLeft(const Mat& img, Mat& binary, double thresh,
     return std::make_pair(top, left);
 }
 
-void completeGrid(std::vector<Point2f>& grid, Mat1f& gridXs, Mat1f& gridYs,
+void completeGrid(std::vector<Point2f>& grid, Mat1i& gridXs, Mat1i& gridYs,
                   std::pair<int,int> topLeft, int puzzleSize, double unit, double angle) {
     // Find iterators pointing to elements where a new row of the grid begins
     std::vector<std::vector<Point2f>::iterator> rowBounds = {grid.begin()};
@@ -301,22 +384,25 @@ void completeGrid(std::vector<Point2f>& grid, Mat1f& gridXs, Mat1f& gridYs,
         std::sort(*start, *stop, MyPoint2fXComp{});
     }
 
+    //TODO split into two functions around this line: one to sort rows by x coordinate and the other to actually complete the grid
     // Use the first grid point we have as the origin of a temporary image coordinate system
     Point2f imgOrigin = grid[0];
     int top = topLeft.first, left = topLeft.second;
-    ALOGD("top is %d, left is %d", top, left);
     // Find where the temporary origin is in the grid coordinate system relative to the true origin
     Point2i gridOrigin = Point2d((imgOrigin.x - left)/unit, (imgOrigin.y - top)/unit);
+#if DEBUG
+    ALOGD("top is %d, left is %d", top, left);
     ALOGD("origin in img coords is at (%f, %f)", imgOrigin.x, imgOrigin.y);
     ALOGD("origin in grid coords is at (%d, %d)", gridOrigin.x, gridOrigin.y);
+#endif
     for (Point2f pt : grid) {
         Point2f normCoords = pt - imgOrigin;
         rotatePoint(normCoords, angle);
         normCoords /= unit;
         Point2i gridCoords = normCoords;
         gridCoords += gridOrigin;
-        gridXs(gridCoords.y, gridCoords.x) = pt.x;
-        gridYs(gridCoords.y, gridCoords.x) = pt.y;
+        gridXs(gridCoords.y, gridCoords.x) = static_cast<int>(pt.x);
+        gridYs(gridCoords.y, gridCoords.x) = static_cast<int>(pt.y);
     }
 
     if (grid.size() < pow(puzzleSize + 1, 2)) {
@@ -324,15 +410,122 @@ void completeGrid(std::vector<Point2f>& grid, Mat1f& gridXs, Mat1f& gridYs,
         assert(gridXs.cols == gridYs.cols);
         for (int i = 0; i < gridXs.rows; ++i) {
             for (int j = 0; j < gridXs.cols; ++j) {
+                if (gridXs(i,j) != 0 or gridYs(i,j) != 0) {
+                    continue;
+                }
                 float x = j - gridOrigin.x;
                 float y = i - gridOrigin.y;
                 Point2f hole(x, y);
                 hole *= unit;
                 rotatePoint(hole, -angle);
                 hole += imgOrigin;
-                gridXs(i, j) = hole.x;
-                gridYs(i, j) = hole.y;
+                gridXs(i, j) = static_cast<int>(hole.x);
+                gridYs(i, j) = static_cast<int>(hole.y);
             }
         }
     }
 }
+
+std::string findNumbers(const Mat& imgGray, Mat& img, const Mat1i& gridXs, const Mat1i& gridYs,
+                        const char* tessParent, int puzzleSize, int confThresh, int cellCrop) {
+    std::string puzzle;
+    puzzle.reserve((size_t) pow(puzzleSize,2) + puzzleSize); //+ puzzlesize for end of line chars
+
+    tesseract::TessBaseAPI* api = new tesseract::TessBaseAPI();
+    if (api->Init(tessParent, "eng")) {
+        ALOGE("Could not initialize tesseract.\n");
+        exit(1);
+    }
+    api->SetPageSegMode(tesseract::PSM_SINGLE_CHAR);
+    int width = imgGray.cols;
+    int height = imgGray.rows;
+    api->SetImage(imgGray.data, width, height, 1, width);
+    api->SetVariable("classify_bln_numeric_mode", "1");
+    for (int i = 0; i < gridXs.rows - 1; ++i) {
+        for (int j = 0; j < gridXs.cols - 1; ++j) {
+            int top = max(gridYs(i,j), gridYs(i,j+1)) + cellCrop;
+            int left = max(gridXs(i,j), gridXs(i+1,j)) + cellCrop;
+            int right = min(gridXs(i,j+1), gridXs(i+1,j+1)) - cellCrop;
+            int bot = min(gridYs(i+1,j), gridYs(i+1,j+1)) - cellCrop;
+            api->SetRectangle(left, top, right-left, bot-top);
+            char* detected = api->GetUTF8Text();
+            int* confidences = api->AllWordConfidences();
+            int confidence = confidences[0];
+            delete [] confidences;
+#if DEBUG
+            //rectangle(img, Rect(left, top, right-left, bot-top), Scalar(0,255,0), 3);
+            ALOGD("detected: %s", detected);
+            ALOGD("confidence: %d", confidence);
+#endif
+            if (confidence < 0 or confidence > 100) { //If confidence's value isn't valid
+                confidence = 0; // Treat it as 0
+                // This might happen e.g. if the api only detects space characters and so confidences
+                // is a length-0 array (terminated with -1)
+            }
+            std::string contents = ".";
+            if (confidence >= confThresh) {
+#if DEBUG
+                ALOGD("WEEEEE WOOOOOO WEEEEE WOOOOOOO WEEEEEE WOOOOOO WEEEE WOOOOOO");
+#endif
+                int value = -1;
+                if (isdigit(detected[0])) {
+                    value = atoi(detected);
+                }
+#if DEBUG
+                ALOGD("got an integer value of %d", value);
+#endif
+                // The OCR engine should only detect numbers between 0 and 3 since that's all
+                // that appears in slitherlink puzzles, but it's best to check to be safe
+                if (value >= 0 and value < 4) {
+                    contents = std::to_string(value);
+                }
+            }
+            puzzle.append(contents);
+            putTextInBox(img, contents, Rect(left, top, right-left, bot-top));
+            delete [] detected;
+        }
+        puzzle.push_back('\n');
+    }
+    api->End();
+
+    return puzzle;
+}
+
+void putTextInBox(Mat& img, const std::string& text, Rect box) {
+    int thickness = 3;
+    double scale = getFontScaleFromHeight(FONT_HERSHEY_SIMPLEX, box.height, thickness);
+    Size textSize = getTextSize(text, FONT_HERSHEY_SIMPLEX, scale, thickness, NULL);
+    // Note that Rect is defined by the x and y coordinates of its top-left corner, but the
+    // putText function uses the BOTTOM-left corner
+    Point boxCenter(box.x + (box.width/2), box.y + (box.height/2));
+    Point org(boxCenter.x - (textSize.width/2), boxCenter.y + (textSize.height/2));
+    putText(img, text, org, FONT_HERSHEY_SIMPLEX, scale, Scalar(0, 255, 0), thickness);
+}
+
+std::string convertToLoopy(const std::string& puzzle, int puzzleSize) {
+    std::stringstream loopy;
+    loopy << puzzleSize << "x" << puzzleSize << ":";
+    int n_spaces_pending = 0;
+    for (auto i = puzzle.begin(); i != puzzle.end(); ++i) {
+        switch(*i) {
+            case '.':
+                ++n_spaces_pending;
+                break;
+            case '\n':
+                break;
+            default:
+                if (n_spaces_pending > 0) {
+                    loopy << char('a'+n_spaces_pending-1);
+                    n_spaces_pending = 0;
+                }
+                loopy << *i;
+                break;
+        }
+    }
+    if (n_spaces_pending > 0) {
+        loopy << char('a'+n_spaces_pending-1);
+    }
+
+    return loopy.str();
+}
+

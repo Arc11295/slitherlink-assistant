@@ -1,2 +1,5 @@
 include ':app'
-include ':openCVLibrary340'
+
+def opencvsdk='/home/aaron/OpenCV-android-sdk'
+include ':opencv'
+project(':opencv').projectDir = new File(opencvsdk + '/sdk')

@@ -16,6 +16,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.MenuItem;
 import android.support.v4.app.NavUtils;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 
@@ -29,10 +30,13 @@ import org.opencv.core.Mat;
 public class ProcessImageActivity extends AppCompatActivity {
     private static final String TAG = "ProcessImageActivity";
     protected static byte[] sImageData; //Array for passing raw JPEG data between FullScreenActivity and ProcessImageActivity
+    protected static String sTessParent;
     private Bitmap mImage;
     private Mat mMat;
     private ImageView mCaptureDisplay;
     private ProgressBar mProgressBar;
+    private Button mCheckSolutionButton;
+    private int mPuzzleSize;
     /**
      * Whether or not the system UI should be auto-hidden after
      * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -103,7 +107,6 @@ public class ProcessImageActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        Log.d(TAG, "onCreate() called with: savedInstanceState = [" + savedInstanceState + "]");
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_process_image);
@@ -117,6 +120,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         //ever need to use a lock while calling them, since each thread ends up modifying different fields
         mContentView = mCaptureDisplay = (ImageView) findViewById(R.id.capture_display);
         mProgressBar = findViewById(R.id.image_progress);
+        mCheckSolutionButton = findViewById(R.id.check_puzzle_button);
 
 
         // Set up the user interaction to manually show or hide the system UI.
@@ -133,7 +137,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         Intent intent = getIntent();
         Rect cropArea = intent.getParcelableExtra(FullscreenActivity.EXTRA_CROP_BOX);
         int boxHeight = intent.getIntExtra(FullscreenActivity.EXTRA_BOX_HEIGHT, 0);
-        int puzzleSize = intent.getIntExtra(FullscreenActivity.EXTRA_PUZZLE_SIZE, 7);
+        mPuzzleSize = intent.getIntExtra(FullscreenActivity.EXTRA_PUZZLE_SIZE, 7);
         // cropArea is still in the coordinates of the screen, not the image, so we have to scale it
         double scaleFactor = ((double) mImage.getHeight())/boxHeight;
         cropArea.left *= scaleFactor;
@@ -143,7 +147,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         mImage = Bitmap.createBitmap(mImage, cropArea.left, cropArea.top, cropArea.width(), cropArea.height());
         mMat = new Mat();
         showBitmap(mImage);
-        new ProcessImageTask().execute(puzzleSize);
+        new DetectPuzzleTask().execute(mPuzzleSize);
     }
 
     @Override
@@ -154,6 +158,12 @@ public class ProcessImageActivity extends AppCompatActivity {
         // created, to briefly hint to the user that UI controls
         // are available.
         delayedHide(100);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        cleanUpGlobals();
     }
 
     @Override
@@ -230,19 +240,40 @@ public class ProcessImageActivity extends AppCompatActivity {
         });
     }
 
-    //TODO write the image processing code in this class
-    private class ProcessImageTask extends AsyncTask<Integer, Void, Void> {
+    private class DetectPuzzleTask extends AsyncTask<Integer, Void, Void> {
 
         @Override
         protected void onPreExecute() {
             mProgressBar.setVisibility(View.VISIBLE);
-            //TODO: add some kind of overlay on top of the image so the progress bar is easier to see
+            //TODO: add some kind of semi-transparent overlay on top of the image so the progress bar is easier to see
         }
 
         @Override
         protected Void doInBackground(Integer... ints) {
             Utils.bitmapToMat(mImage, mMat);
-            processImage(mMat.getNativeObjAddr(), ints[0]);
+            detectPuzzle(mMat.getNativeObjAddr(), ints[0], sTessParent);
+            Utils.matToBitmap(mMat, mImage);
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void v) {
+            mProgressBar.setVisibility(View.INVISIBLE);
+            mCheckSolutionButton.setVisibility(View.VISIBLE);
+            showBitmap(mImage);
+        }
+    }
+
+    private class CheckSolutionTask extends AsyncTask<Integer, Void, Void> {
+        @Override
+        protected void onPreExecute() {
+            mCheckSolutionButton.setVisibility(View.INVISIBLE);
+            mProgressBar.setVisibility(View.VISIBLE);
+        }
+
+        @Override
+        protected Void doInBackground(Integer... ints) {
+            checkSolution(mMat.getNativeObjAddr(), ints[0]);
             Utils.matToBitmap(mMat, mImage);
             return null;
         }
@@ -254,5 +285,13 @@ public class ProcessImageActivity extends AppCompatActivity {
         }
     }
 
-    public native void processImage(long matAddr, int puzzleSize);
+    public void runSolutionCheck(View view) {
+        new CheckSolutionTask().execute(mPuzzleSize);
+    }
+
+    public native void detectPuzzle(long matAddr, int puzzleSize, String jTessParent);
+
+    public native void checkSolution(long matAddr, int puzzleSize);
+
+    public native void cleanUpGlobals();
 }

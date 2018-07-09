@@ -14,4 +14,5 @@
 
     <string name="title_activity_process_image">Process Image Activity</string>
     <string name="capture_display_description">Displays captured image</string>
+    <string name="check_puzzle_button">Check solution</string>
 </resources>
