@@ -161,12 +161,6 @@ public class ProcessImageActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        cleanUpGlobals();
-    }
-
-    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
         if (id == android.R.id.home) {
@@ -289,9 +283,7 @@ public class ProcessImageActivity extends AppCompatActivity {
         new CheckSolutionTask().execute(mPuzzleSize);
     }
 
-    public native void detectPuzzle(long matAddr, int puzzleSize, String jTessParent);
+    public native void detectPuzzle(long imgAddr, int puzzleSize, String jTessParent);
 
-    public native void checkSolution(long matAddr, int puzzleSize);
-
-    public native void cleanUpGlobals();
+    public native void checkSolution(long imgAddr, int puzzleSize);
 }

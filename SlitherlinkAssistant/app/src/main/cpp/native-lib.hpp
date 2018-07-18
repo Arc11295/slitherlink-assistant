@@ -7,6 +7,7 @@
 
 #include <opencv2/core/mat.hpp>
 #include <set>
+#include "SlinkerGrid.h"
 
 struct MyPoint2fYComp {
     bool operator()(const cv::Point2f& left, const cv::Point2f& right) const;
@@ -16,9 +17,12 @@ struct MyPoint2fXComp {
     bool operator()(const cv::Point2f& left, const cv::Point2f& right) const;
 };
 
-typedef std::set<cv::Point2f, MyPoint2fYComp> PointSet;
+enum BorderMode {
+    HORIZONTAL,
+    VERTICAL
+};
 
-void cleanUpGlobals();
+typedef std::set<cv::Point2f, MyPoint2fYComp> PointSet;
 
 /** This is where to make changes if we're missing too many gridpoints
  *
@@ -121,4 +125,12 @@ std::string findNumbers(const cv::Mat& imgGray, cv::Mat& img, const cv::Mat1i& g
 void putTextInBox(cv::Mat& img, const std::string& text, cv::Rect box);
 
 std::string convertToLoopy(const std::string& puzzle, int puzzleSize);
+
+void detectUserSolution(const cv::Mat& imgGray, cv::Mat& img, const cv::Mat1i& gridXs,
+                               const cv::Mat1i& gridYs, SlinkerGrid* userSolution);
+
+int checkBorder(const cv::Mat& imgGray, const cv::Point2i& current, const cv::Point2i& neighbor,
+                BorderMode mode, int slackPixels = 10);
+
+void drawBorder(cv::Mat& img, const cv::Point2i& start, const cv::Point2i& end, int borderStatus);
 #endif //SLITHERLINKASSISTANT_NATIVE_LIB_HPP

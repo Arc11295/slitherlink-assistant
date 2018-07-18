@@ -25,19 +25,17 @@
 
 using namespace cv;
 
-std::string* globalPuzzle = NULL;
+std::string globalLoopy;
+SlinkerGrid globalUserSolution;
 
 // TODO change the return type of this function so we can return error codes
 extern "C" JNIEXPORT void
 JNICALL
 Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
-        JNIEnv *env, jobject instance, jlong addr, jint puzzleSize, jstring jTessParent) {
-    if (globalPuzzle != NULL) {
-        cleanUpGlobals();
-    }
-    Mat& myMat = *(Mat*) addr;
+        JNIEnv *env, jobject instance, jlong imgAddr, jint puzzleSize, jstring jTessParent) {
+    Mat& img = *(Mat*) imgAddr;
     Mat imgGray;
-    cvtColor(myMat, imgGray, COLOR_RGB2GRAY);
+    cvtColor(img, imgGray, COLOR_RGB2GRAY);
 
     std::vector<KeyPoint> keypoints{};
 
@@ -45,7 +43,7 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
 #if DEBUG
     for (auto k : keypoints) {
         auto point = k.pt;
-        circle(myMat, point, 15, Scalar(0, 0, 0), CV_FILLED);
+        circle(img, point, 15, Scalar(0, 0, 0), CV_FILLED);
     }
 #endif
 
@@ -55,7 +53,7 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
 #if DEBUG
     ALOGD("there are %d points in the grid", (int) grid.size());
     for (auto i = grid.begin(); i != grid.end(); ++i) {
-        circle(myMat, *i, 10, Scalar(0, 0, 255), CV_FILLED);
+        circle(img, *i, 10, Scalar(0, 0, 255), CV_FILLED);
     }
 #endif
 
@@ -72,7 +70,7 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
 
 #if DEBUG
     for (auto p : gridSet) {
-        circle(myMat, p, 5, Scalar(0, 255, 0), CV_FILLED);
+        circle(img, p, 5, Scalar(0, 255, 0), CV_FILLED);
     }
 #endif
 
@@ -89,7 +87,7 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
 
     const char* tessParent = env->GetStringUTFChars(jTessParent, 0);
 
-    globalPuzzle = new std::string{findNumbers(imgGray, myMat, gridXs, gridYs, tessParent, puzzleSize)};
+    std::string puzzle{findNumbers(imgGray, img, gridXs, gridYs, tessParent, puzzleSize)};
 
 #if DEBUG
     for (int i = 0; i < gridXs.rows; ++i) {
@@ -97,12 +95,20 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_detectPuzzle(
             Point2f point{};
             point.x = gridXs(i,j);
             point.y = gridYs(i,j);
-            circle(myMat, point, 10, Scalar(255,0,0), CV_FILLED);
+            circle(img, point, 10, Scalar(255,0,0), CV_FILLED);
         }
     }
 
-    ALOGD("Got the puzzle layout\n%s",globalPuzzle->c_str());
+    ALOGD("Got the puzzle layout\n%s",puzzle.c_str());
 #endif
+
+    globalLoopy = convertToLoopy(puzzle, puzzleSize);
+#if DEBUG
+    ALOGD("loopy format string is %s", globalLoopy.c_str());
+#endif
+
+    globalUserSolution = SlinkerGrid::ReadFromLoopyFormat(globalLoopy);
+    detectUserSolution(imgGray, img, gridXs, gridYs, globalUserSolution);
 
     env->ReleaseStringUTFChars(jTessParent, tessParent);
     //TODO: return a code for successful execution
@@ -113,12 +119,8 @@ JNICALL
 Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_checkSolution(
         JNIEnv *env, jobject instance, jlong matAddr, jint puzzleSize) {
     // TODO: get correct solution from slinker, then compare to user solution
-    std::string loopy = convertToLoopy(*globalPuzzle, puzzleSize);
-#if DEBUG
-    ALOGD("loopy format string is %s", loopy.c_str());
-#endif
 
-    SlinkerGrid sPuzzle = SlinkerGrid::ReadFromLoopyFormat(loopy);
+    SlinkerGrid sPuzzle = SlinkerGrid::ReadFromLoopyFormat(globalLoopy);
 #if DEBUG
     ALOGD("gave the puzzle to slinker:\n%s", sPuzzle.GetPrintOut().c_str());
 #endif
@@ -131,19 +133,6 @@ Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_checkSolution
     ALOGD("The solution is:\n%s", solution.GetPrintOut().c_str());
     solution.MarkUnknownBordersAsOff();
 #endif
-    cleanUpGlobals();
-}
-
-extern "C" JNIEXPORT void
-JNICALL
-Java_com_github_arc11295_slitherlinkassistant_ProcessImageActivity_cleanUpGlobals(
-        JNIEnv *env, jobject instance) {
-    cleanUpGlobals();
-}
-
-void cleanUpGlobals() {
-    delete globalPuzzle;
-    globalPuzzle = NULL;
 }
 
 void detectKeypoints(const Mat& img, std::vector<KeyPoint>& kps) {
@@ -527,5 +516,57 @@ std::string convertToLoopy(const std::string& puzzle, int puzzleSize) {
     }
 
     return loopy.str();
+}
+
+void detectUserSolution(const Mat& imgGray, Mat& img, const Mat1i& gridXs,
+                               const Mat1i& gridYs, SlinkerGrid userSolution) {
+    for (int i = 0; i < gridXs.rows; ++i) {
+        for (int j = 0; j < gridXs.cols; ++j) {
+            Point2i current{gridXs(i,j), gridYs(i,j)};
+            if (j+1 < gridXs.cols) {
+                Point2i right{gridXs(i,j+1), gridYs(i,j+1)};
+                int borderStatus = checkBorder(imgGray, current, right, HORIZONTAL);
+                // These coordinates work out because slinker uses what amounts to an ascii-art
+                // representation of the puzzle
+                userSolution.gridValue((2*j)+1, 2*i) = borderStatus;
+                drawBorder(img, current, right, borderStatus);
+            }
+            if (i+1 < gridXs.rows) {
+                Point2i below{gridXs(i+1,j), gridYs(i+1,j)};
+                int borderStatus = checkBorder(imgGray, current, below, VERTICAL);
+                userSolution.gridValue(2*j, (2*i)+1) = borderStatus;
+                drawBorder(img, current, below, borderStatus);
+            }
+        }
+    }
+}
+
+int checkBorder(const Mat& imgGray, const Point2i& current, const Point2i& neighbor,
+                BorderMode mode, int slackPixels) {
+    int top, left, right, bot;
+    if (mode == HORIZONTAL) {
+        left = current.x;
+        right = neighbor.x;
+        top = min(current.y, neighbor.y) - slackPixels;
+        bot = max(current.y, neighbor.y) + slackPixels;
+    } else { //Vertical
+        top = current.y;
+        bot = neighbor.y;
+        left = min(current.x, neighbor.x) - slackPixels;
+        right = max(current.x, neighbor.x) + slackPixels;
+    }
+
+    Mat checkRegion(imgGray, Rect(left, top, right-left, bot-top));
+    if (mode == HORIZONTAL) {
+        // By transposing, we can turn the horizontal problem into a vertical problem, thus making
+        // the rest of the function the same for both cases
+        checkRegion = checkRegion.t();
+    }
+
+    Mat edges{checkRegion};
+    // The datatype of these Mats should be 1 byte if I've done everything right, so the thresholds
+    // I've used should be 10% and 20% of the max value possible here. I got 10% and 20% from the
+    // default behavior of scikit-image's canny edge detector, which worked quite well in my prototype
+    Canny(checkRegion, edges, 0.1d*UCHAR_MAX, 0.2d*UCHAR_MAX);
 }
 
